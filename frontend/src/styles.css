@@ -698,6 +698,89 @@ p {
   color: #64748b;
 }
 
+.draw-pairs-section {
+  width: 100%;
+  margin: 0 auto 32px;
+  text-align: left;
+}
+
+.draw-pairs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.draw-pairs-header h2 {
+  color: #334155;
+  font-size: 1.05rem;
+}
+
+.draw-pairs-header span {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.draw-pairs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.draw-pair-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.draw-pair-person {
+  min-width: 0;
+}
+
+.draw-pair-person strong,
+.draw-pair-person span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.draw-pair-person strong {
+  color: #1e293b;
+  font-size: 0.98rem;
+}
+
+.draw-pair-person span {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.draw-pair-person-receiver strong {
+  color: #0f766e;
+}
+
+.draw-pair-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  color: #0f766e;
+  background: #ccfbf1;
+  font-weight: 800;
+}
+
 .btn-new-game {
   padding: 14px 32px;
   border-radius: 10px;
@@ -862,6 +945,21 @@ p {
 
   .celebration-icon {
     font-size: 4rem;
+  }
+
+  .draw-pairs-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .draw-pair-item {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .draw-pair-arrow {
+    transform: rotate(90deg);
   }
 
   .btn-new-game {

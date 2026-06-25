@@ -30,8 +30,9 @@ Fluxo atual:
 2. valida minimo de 3 participantes
 3. gera pares validos sem auto-sorteio
 4. salva `Draw`, `DrawParticipant` e `DrawResult`
-5. dispara o envio dos e-mails em background
-6. retorna sucesso imediatamente
+5. retorna os pares sorteados para a interface
+6. dispara o envio dos e-mails em background
+7. retorna sucesso imediatamente
 
 Resposta esperada:
 
@@ -43,11 +44,20 @@ Resposta esperada:
     "id": 1,
     "createdAt": "2026-06-24T19:31:15.174Z",
     "totalParticipants": 3
-  }
+  },
+  "pairs": [
+    {
+      "giverName": "Joao",
+      "giverEmail": "joao@email.com",
+      "receiverName": "Maria",
+      "receiverEmail": "maria@email.com"
+    }
+  ]
 }
 ```
 
 Se o envio de e-mail falhar depois da resposta, o sorteio continua salvo e a falha fica apenas no log do backend.
+Enquanto o dominio do provedor de e-mail nao estiver verificado, a tela de sucesso mostra esses pares diretamente na interface.
 
 ## Funcionalidades
 
@@ -69,6 +79,7 @@ Se o envio de e-mail falhar depois da resposta, o sorteio continua salvo e a fal
 - Garante que todos tirem 1 pessoa
 - Garante que todos sejam tirados 1 vez
 - Salva historico completo do sorteio
+- Mostra os pares sorteados na tela de sucesso
 - Envia e-mails individuais em background apos salvar o sorteio
 - Falhas de e-mail nao revertem o sorteio
 
@@ -351,7 +362,9 @@ npm run preview
 ## Arquivos relevantes para deploy
 
 - `backend/src/lib/mail.ts`: Resend quando `RESEND_API_KEY` existe, SMTP quando nao existe
-- `backend/src/modules/draw/draw.service.ts`: salva o sorteio e dispara e-mails em background
+- `backend/src/modules/draw/draw.service.ts`: salva o sorteio, retorna os pares e dispara e-mails em background
+- `frontend/src/services/draw.ts`: tipo do retorno do sorteio, incluindo `pairs`
+- `frontend/src/components/DrawSuccessCard.tsx`: tela de sucesso com detalhes da rodada e pares sorteados
 - `backend/.env.example`: variaveis de ambiente de banco, CORS e e-mail
 - `frontend/.env.example`: exemplo da URL da API
 - `render.yaml`: configuracao opcional do backend no Render

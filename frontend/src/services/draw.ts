@@ -1,5 +1,12 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3333/api";
 
+export interface DrawPair {
+  giverName: string;
+  giverEmail: string;
+  receiverName: string;
+  receiverEmail: string;
+}
+
 export interface DrawResponse {
   message: string;
   emailError: string | null;
@@ -8,6 +15,7 @@ export interface DrawResponse {
     createdAt: string;
     totalParticipants: number;
   };
+  pairs: DrawPair[];
 }
 
 async function parseResponse<T>(response: Response, defaultMessage: string): Promise<T> {

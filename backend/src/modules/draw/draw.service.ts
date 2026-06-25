@@ -8,6 +8,13 @@ type ParticipantDrawPair = {
   receiverParticipantId: number;
 };
 
+type DrawPairResponse = {
+  giverName: string;
+  giverEmail: string;
+  receiverName: string;
+  receiverEmail: string;
+};
+
 export class DrawError extends Error {
   constructor(
     message: string,
@@ -152,7 +159,7 @@ export const drawService = {
     const emailPairs = buildEmailPairs(participants, pairs);
 
     try {
-      const draw = await prisma.$transaction(async (transaction) => {
+      const result = await prisma.$transaction(async (transaction) => {
         const createdDraw = await transaction.draw.create({
           data: {},
         });
@@ -169,7 +176,10 @@ export const drawService = {
           ),
         );
 
-        const drawParticipantByOriginalParticipantId = new Map<number, number>();
+        const drawParticipantByOriginalParticipantId = new Map<
+          number,
+          (typeof createdDrawParticipants)[number]
+        >();
 
         for (const participant of participants) {
           const drawParticipant = createdDrawParticipants.find(
@@ -180,34 +190,57 @@ export const drawService = {
             throw new DrawError("Falha ao salvar os participantes do sorteio.", 500);
           }
 
-          drawParticipantByOriginalParticipantId.set(participant.id, drawParticipant.id);
+          drawParticipantByOriginalParticipantId.set(participant.id, drawParticipant);
         }
+
+        const resultPairs: DrawPairResponse[] = pairs.map((pair) => {
+          const giverDrawParticipant = drawParticipantByOriginalParticipantId.get(
+            pair.giverParticipantId,
+          );
+          const receiverDrawParticipant = drawParticipantByOriginalParticipantId.get(
+            pair.receiverParticipantId,
+          );
+
+          if (!giverDrawParticipant || !receiverDrawParticipant) {
+            throw new DrawError("Falha ao mapear participantes do sorteio.", 500);
+          }
+
+          return {
+            giverName: giverDrawParticipant.name,
+            giverEmail: giverDrawParticipant.email,
+            receiverName: receiverDrawParticipant.name,
+            receiverEmail: receiverDrawParticipant.email,
+          };
+        });
 
         await transaction.drawResult.createMany({
           data: pairs.map((pair) => {
-            const giverDrawParticipantId = drawParticipantByOriginalParticipantId.get(
+            const giverDrawParticipant = drawParticipantByOriginalParticipantId.get(
               pair.giverParticipantId,
             );
-            const receiverDrawParticipantId = drawParticipantByOriginalParticipantId.get(
+            const receiverDrawParticipant = drawParticipantByOriginalParticipantId.get(
               pair.receiverParticipantId,
             );
 
-            if (!giverDrawParticipantId || !receiverDrawParticipantId) {
+            if (!giverDrawParticipant || !receiverDrawParticipant) {
               throw new DrawError("Falha ao mapear participantes do sorteio.", 500);
             }
 
             return {
               drawId: createdDraw.id,
-              giverParticipantId: giverDrawParticipantId,
-              receiverParticipantId: receiverDrawParticipantId,
+              giverParticipantId: giverDrawParticipant.id,
+              receiverParticipantId: receiverDrawParticipant.id,
             };
           }),
         });
 
         return {
-          id: createdDraw.id,
-          createdAt: createdDraw.createdAt,
-          totalParticipants: createdDrawParticipants.length,
+          draw: {
+            id: createdDraw.id,
+            createdAt: createdDraw.createdAt,
+            totalParticipants: createdDrawParticipants.length,
+          },
+          pairs: resultPairs,
         };
       });
 
@@ -216,7 +249,8 @@ export const drawService = {
       return {
         message: "Sorteio realizado com sucesso.",
         emailError: null,
-        draw,
+        draw: result.draw,
+        pairs: result.pairs,
       };
     } catch (error) {
       console.error("Failed to persist draw result", error);

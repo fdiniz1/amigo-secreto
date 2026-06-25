@@ -1,4 +1,5 @@
 import React from "react";
+
 import { DrawResponse } from "../services/draw";
 
 interface DrawSuccessCardProps {
@@ -16,20 +17,21 @@ export function DrawSuccessCard({
 
   return (
     <section className="celebration-container">
-      <span className="celebration-icon" role="img" aria-label="Sorteio concluído">
+      <span className="celebration-icon" role="img" aria-label="Sorteio concluido">
         🎉
       </span>
 
-      <h1 className="celebration-title">Sorteio concluído!</h1>
+      <h1 className="celebration-title">Sorteio concluido!</h1>
 
       <p className="celebration-subtitle">
-        O sorteio foi realizado com sucesso e os participantes já receberam o resultado por e-mail.
+        O sorteio foi salvo com sucesso. Os e-mails serao enviados em background quando
+        o provedor estiver disponivel.
       </p>
 
       {drawResult.emailError && (
         <div className="celebration-warning" role="alert">
           <strong>
-            O sorteio foi concluído, mas houve um problema no envio de alguns e-mails.
+            O sorteio foi concluido, mas houve um problema no envio de alguns e-mails.
           </strong>
           <p>{drawResult.emailError}</p>
         </div>
@@ -40,7 +42,7 @@ export function DrawSuccessCard({
 
         <ul className="celebration-details-list">
           <li>
-            <span>Código do sorteio</span>
+            <span>Codigo do sorteio</span>
             <strong>#{drawResult.draw.id}</strong>
           </li>
           <li>
@@ -51,6 +53,36 @@ export function DrawSuccessCard({
             <span>Data e hora</span>
             <strong>{formattedDate}</strong>
           </li>
+        </ul>
+      </div>
+
+      <div className="draw-pairs-section">
+        <div className="draw-pairs-header">
+          <h2>Pares sorteados</h2>
+          <span>{drawResult.pairs.length} pares</span>
+        </div>
+
+        <ul className="draw-pairs-list">
+          {drawResult.pairs.map((pair) => (
+            <li
+              className="draw-pair-item"
+              key={`${pair.giverEmail}-${pair.receiverEmail}`}
+            >
+              <div className="draw-pair-person">
+                <strong>{pair.giverName}</strong>
+                <span>{pair.giverEmail}</span>
+              </div>
+
+              <span className="draw-pair-arrow" aria-hidden="true">
+                &rarr;
+              </span>
+
+              <div className="draw-pair-person draw-pair-person-receiver">
+                <strong>{pair.receiverName}</strong>
+                <span>{pair.receiverEmail}</span>
+              </div>
+            </li>
+          ))}
         </ul>
       </div>
 
