@@ -1,356 +1,168 @@
 # Amigo Secreto
 
-Aplicação full stack para gerenciamento de participantes de um Amigo Secreto, realização de sorteio sem auto-sorteio e envio automático de e-mails individuais informando quem cada pessoa deve presentear.
+Aplicacao full stack para cadastro de participantes, execucao de sorteio de Amigo Secreto sem auto-sorteio, persistencia do historico e envio individual de e-mails.
 
-O projeto foi desenvolvido com **Node.js + Express + Prisma + PostgreSQL** no backend e **React + TypeScript + Vite** no frontend.
+O projeto usa:
 
----
+- Frontend: React, TypeScript e Vite
+- Backend: Node.js, Express, TypeScript, Prisma e PostgreSQL
+- Banco: PostgreSQL
+- E-mail: Resend API em producao e SMTP opcional em desenvolvimento
 
-# Visão geral
+## Status do deploy
 
-A aplicação permite:
+O projeto foi adaptado para deploy de custo zero ou quase zero com o menor retrabalho possivel:
 
-* cadastrar participantes com **nome** e **e-mail**
-* editar participantes
-* excluir participantes
-* listar participantes cadastrados
-* realizar o sorteio do Amigo Secreto
-* enviar um **e-mail individual** para cada participante informando quem ele tirou
-* reiniciar a rodada para montar um novo Amigo Secreto
+- Frontend: Cloudflare Pages
+- Backend/API: Render Free Web Service
+- Banco: Neon Postgres Free
+- E-mail: Resend Free via HTTP API
 
-Além disso, o projeto foi estruturado para preservar o histórico de sorteios já realizados.
+Essa combinacao preserva o backend Express atual, a modelagem Prisma/PostgreSQL, as rotas existentes e a regra de sorteio ja implementada.
 
----
+## Por que nao migrar tudo para Cloudflare
 
-# Stack utilizada
+Cloudflare Pages e uma boa escolha para o frontend estatico. Para o backend, porem, migrar para Cloudflare Workers exigiria trocar o runtime Node/Express, adaptar Prisma/PostgreSQL ou migrar para D1, e substituir o envio SMTP.
 
-## Backend
+Para um teste tecnico que precisa ficar online rapido, manter Express no Render e usar Neon Postgres reduz risco e retrabalho. O unico ajuste relevante no e-mail e usar Resend por HTTP em producao, porque o Render Free bloqueia portas SMTP comuns.
 
-* Node.js
-* TypeScript
-* Express
-* Prisma ORM
-* PostgreSQL
-* Nodemailer
+## Funcionalidades
 
-## Frontend
+### Participantes
 
-* React
-* TypeScript
-* Vite
+- Criar participante
+- Listar participantes
+- Buscar participante por ID
+- Editar participante
+- Excluir participante
+- Limpar a lista atual de participantes
+- Validacao basica de nome e e-mail
+- E-mail unico
 
-## Banco de dados
+### Sorteio
 
-* PostgreSQL
+- Exige no minimo 3 participantes
+- Garante que ninguem tire a si mesmo
+- Garante que todos tirem 1 pessoa
+- Garante que todos sejam tirados 1 vez
+- Salva historico completo do sorteio
+- Envia e-mail individual para cada participante
+- Se o envio de e-mail falhar, o sorteio continua salvo e a API retorna aviso
 
-## E-mail
+## Modelagem de dados
 
-* SMTP configurável
-* suporte a **Ethereal** para ambiente de desenvolvimento/testes
+O backend preserva quatro models Prisma:
 
----
+- `Participant`: lista atual da rodada
+- `Draw`: sorteio executado
+- `DrawParticipant`: snapshot dos participantes daquele sorteio
+- `DrawResult`: pares gerados no sorteio
 
-# Funcionalidades implementadas
+O fluxo do sorteio salva primeiro o historico (`Draw`, `DrawParticipant`, `DrawResult`) e so depois tenta enviar e-mails. Isso evita perder o resultado caso o provedor de e-mail falhe.
 
-## Participantes
-
-* Criar participante
-* Listar participantes
-* Editar participante
-* Excluir participante
-* Limpar a lista atual de participantes para iniciar uma nova rodada
-
-## Sorteio
-
-* Realizar sorteio do Amigo Secreto
-* Garantir que **ninguém tire a si mesmo**
-* Persistir o sorteio no banco
-* Tirar um “snapshot” dos participantes da rodada para manter o histórico íntegro
-* Enviar e-mails individuais após o sorteio
-
-## Frontend
-
-* Tela de cadastro
-* Lista de participantes
-* Modal de edição
-* Modal de confirmação de exclusão
-* Modal de confirmação de reinício da rodada
-* Tela final de sucesso após sorteio
-* Loading visual durante o sorteio
-
----
-
-# Arquitetura da solução
-
-O projeto foi dividido em duas partes:
+## Estrutura
 
 ```text
-amigo-secreto/
-├─ backend/
-└─ frontend/
+Amigo-Secreto/
+  backend/
+    prisma/
+      schema.prisma
+      migrations/
+    src/
+      app.ts
+      server.ts
+      routes.ts
+      lib/
+      middlewares/
+      modules/
+  frontend/
+    src/
+      components/
+      services/
+      App.tsx
+      main.tsx
+  render.yaml
 ```
 
----
+## Rotas da API
 
-# Estrutura do projeto
+- `GET /health`
+- `GET /api/participants`
+- `GET /api/participants/:id`
+- `POST /api/participants`
+- `PUT /api/participants/:id`
+- `DELETE /api/participants/:id`
+- `DELETE /api/participants`
+- `POST /api/draw`
 
-## Backend
+## Variaveis de ambiente
 
-```text
-backend/
-├─ prisma/
-│  ├─ schema.prisma
-│  └─ migrations/
-├─ src/
-│  ├─ app.ts
-│  ├─ server.ts
-│  ├─ routes.ts
-│  ├─ lib/
-│  │  ├─ prisma.ts
-│  │  ├─ mail.ts
-│  │  └─ async-handler.ts
-│  ├─ middlewares/
-│  │  └─ error-handler.ts
-│  └─ modules/
-│     ├─ participants/
-│     │  ├─ participants.routes.ts
-│     │  ├─ participants.controller.ts
-│     │  └─ participants.service.ts
-│     └─ draw/
-│        ├─ draw.routes.ts
-│        ├─ draw.controller.ts
-│        └─ draw.service.ts
+### Backend
+
+Arquivo local: `backend/.env`
+
+Use `backend/.env.example` como base.
+
+```env
+NODE_ENV=development
+PORT=3333
+FRONTEND_URL=http://localhost:5173
+FRONTEND_URLS=http://localhost:5173
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/amigo_secreto?schema=public"
+
+MAIL_PROVIDER=smtp
+RESEND_API_KEY=
+MAIL_FROM="Amigo Secreto <no-reply@seu-dominio.com>"
+MAIL_REPLY_TO="Amigo Secreto <no-reply@seu-dominio.com>"
+
+SMTP_HOST=smtp.ethereal.email
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM="Amigo Secreto <no-reply@amigosecreto.local>"
+SMTP_REPLY_TO="Amigo Secreto <no-reply@amigosecreto.local>"
 ```
 
-## Frontend
+Para producao no Render, use:
 
-```text
-frontend/
-├─ src/
-│  ├─ App.tsx
-│  ├─ main.tsx
-│  ├─ vite-env.d.ts
-│  ├─ components/
-│  │  ├─ ConfirmModal.tsx
-│  │  ├─ DrawLoadingModal.tsx
-│  │  ├─ DrawSuccessCard.tsx
-│  │  ├─ EditParticipantModal.tsx
-│  │  ├─ ParticipantForm.tsx
-│  │  └─ ParticipantsList.tsx
-│  └─ services/
-│     ├─ participants.ts
-│     └─ draw.ts
+```env
+NODE_ENV=production
+DATABASE_URL=<connection string do Neon com sslmode=require>
+FRONTEND_URLS=https://<seu-projeto>.pages.dev
+MAIL_PROVIDER=resend
+RESEND_API_KEY=<sua chave da Resend>
+MAIL_FROM="Amigo Secreto <no-reply@seu-dominio.com>"
+MAIL_REPLY_TO="Amigo Secreto <seu-email@seu-dominio.com>"
 ```
 
----
+Observacoes:
 
-# Modelagem de dados
+- `FRONTEND_URLS` aceita varias origens separadas por virgula.
+- Em producao, prefira `MAIL_PROVIDER=resend`.
+- Para Resend enviar para destinatarios reais, configure um dominio verificado no painel da Resend e use esse dominio em `MAIL_FROM`.
+- SMTP continua disponivel para desenvolvimento local com Ethereal ou outro provedor SMTP.
 
-A aplicação utiliza **quatro entidades principais**.
+### Frontend
 
-## 1. Participant
+Arquivo local: `frontend/.env`
 
-Representa a lista atual de participantes cadastrados para a rodada atual.
+Use `frontend/.env.example` como base.
 
-Campos:
-
-* `id`
-* `name`
-* `email`
-* `createdAt`
-* `updatedAt`
-
-## 2. Draw
-
-Representa uma execução de sorteio.
-
-Campos:
-
-* `id`
-* `name` (opcional)
-* `createdAt`
-* `updatedAt`
-
-## 3. DrawParticipant
-
-Representa o **snapshot dos participantes dentro de um sorteio**.
-
-Esse model foi criado para preservar o histórico corretamente.
-Mesmo que a lista atual de participantes seja apagada ou alterada depois, o sorteio passado continua íntegro.
-
-Campos:
-
-* `id`
-* `drawId`
-* `name`
-* `email`
-* `createdAt`
-* `updatedAt`
-
-## 4. DrawResult
-
-Representa os pares do sorteio.
-
-Campos:
-
-* `id`
-* `drawId`
-* `giverParticipantId`
-* `receiverParticipantId`
-
-Nesse caso, `giverParticipantId` e `receiverParticipantId` apontam para **DrawParticipant**, e não para `Participant`.
-
----
-
-# Decisões técnicas importantes
-
-## 1. Separação entre Participant e DrawParticipant
-
-No começo, o sorteio apontava diretamente para `Participant`.
-Esse desenho gerava um problema: ao apagar ou editar participantes depois do sorteio, o histórico poderia ficar inconsistente.
-
-Por isso, a solução foi separar:
-
-* **Participant** → estado atual da rodada
-* **DrawParticipant** → cópia/snapshot do participante dentro de cada sorteio realizado
-
-Isso garante histórico consistente mesmo após reset da rodada.
-
----
-
-## 2. Garantia de que ninguém tira a si mesmo
-
-Um dos principais pontos de atenção foi garantir que o sorteio nunca gerasse um participante tirando a si próprio.
-
-A solução implementada foi:
-
-1. buscar todos os participantes
-2. embaralhar a lista
-3. montar os pares por rotação circular:
-
-   * cada participante entrega para o próximo da lista embaralhada
-   * o último entrega para o primeiro
-
-Com isso:
-
-* todos tiram alguém
-* todos são tirados por alguém
-* ninguém tira a si mesmo
-
-Além da validação em memória, também existe uma validação no banco para evitar pares inválidos no resultado do sorteio.
-
----
-
-## 3. Preservação do histórico do sorteio
-
-Ao realizar o sorteio, o sistema:
-
-1. cria um registro em `Draw`
-2. copia os participantes atuais para `DrawParticipant`
-3. cria os pares em `DrawResult` usando os IDs de `DrawParticipant`
-4. só depois envia os e-mails
-
-Isso garante que:
-
-* o sorteio fica salvo mesmo se os e-mails falharem
-* o histórico não depende do estado atual da lista de participantes
-
----
-
-## 4. Tratamento de nomes repetidos no e-mail
-
-Outro ponto tratado foi a exibição de nomes no e-mail.
-
-Exemplo:
-
-* `Maria Silva`
-* `Maria Souza`
-
-Se duas pessoas têm o mesmo primeiro nome, o e-mail passa a usar o nome suficiente para diferenciar:
-
-* `Maria Silva`
-* `Maria Souza`
-
-Se o primeiro nome for único, o e-mail usa apenas o primeiro nome:
-
-* `João`
-
-Essa regra foi aplicada tanto para:
-
-* quem está recebendo o e-mail
-* quanto para o nome da pessoa sorteada
-
----
-
-## 5. CORS configurado no backend
-
-Como o frontend roda em uma porta diferente do backend durante o desenvolvimento, foi necessário configurar CORS no Express.
-
-A API foi preparada para aceitar requisições do frontend por meio da variável de ambiente `FRONTEND_URL`.
-
-Exemplo:
-
-* frontend: `http://localhost:5173`
-* backend: `http://localhost:3333`
-
----
-
-## 6. Prisma Client em singleton
-
-Foi adotado um singleton para o Prisma Client no backend para evitar múltiplas conexões em ambiente de desenvolvimento com hot reload.
-
----
-
-## 7. Envio de e-mail desacoplado da persistência
-
-O sistema primeiro salva o sorteio e só depois tenta enviar os e-mails.
-
-Se o SMTP falhar:
-
-* o sorteio continua salvo no banco
-* a API retorna uma mensagem de aviso
-* a interface informa que o sorteio foi salvo, mas houve falha no envio dos e-mails
-
-Isso evita perda de sorteio por indisponibilidade momentânea do servidor SMTP.
-
----
-
-# Requisitos
-
-## Necessários
-
-* Node.js 18+
-* npm
-* PostgreSQL
-
-## Opcional
-
-* Docker, para subir o PostgreSQL rapidamente
-
----
-
-# Como rodar o projeto
-
-## 1. Clonar o repositório
-
-```bash
-git clone <URL_DO_REPOSITORIO>
-cd amigo-secreto
+```env
+VITE_API_URL=http://localhost:3333/api
 ```
 
----
+Em producao no Cloudflare Pages:
 
-# Banco de dados
-
-## Opção 1: PostgreSQL local
-
-Crie um banco chamado:
-
-```sql
-CREATE DATABASE amigo_secreto;
+```env
+VITE_API_URL=https://<sua-api>.onrender.com/api
 ```
 
-## Opção 2: PostgreSQL via Docker
+## Rodando localmente
+
+### 1. Banco local
+
+Crie um banco PostgreSQL chamado `amigo_secreto` ou suba via Docker:
 
 ```bash
 docker run --name amigo-secreto-postgres \
@@ -361,349 +173,179 @@ docker run --name amigo-secreto-postgres \
   -d postgres:16
 ```
 
----
-
-# Configuração do backend
-
-Entre na pasta do backend:
+### 2. Backend
 
 ```bash
 cd backend
 npm install
-```
-
-Crie o arquivo `.env` com base no exemplo abaixo.
-
-## backend/.env
-
-```env
-PORT=3333
-FRONTEND_URL=http://localhost:5173
-
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/amigo_secreto?schema=public"
-
-SMTP_HOST=smtp.ethereal.email
-SMTP_PORT=587
-SMTP_USER=SEU_USUARIO
-SMTP_PASS=SUA_SENHA
-SMTP_FROM="Amigo Secreto <no-reply@amigosecreto.local>"
-SMTP_REPLY_TO="Amigo Secreto <no-reply@amigosecreto.local>"
-```
-
----
-
-# Prisma / banco de dados
-
-Ainda dentro da pasta `backend`, execute:
-
-```bash
+cp .env.example .env
 npx prisma generate
 npx prisma migrate dev
-```
-
-Se quiser inspecionar os dados no navegador:
-
-```bash
-npx prisma studio
-```
-
----
-
-# Rodando o backend
-
-Na pasta `backend`:
-
-```bash
 npm run dev
 ```
 
-A API ficará disponível em:
+A API fica em:
 
 ```text
 http://localhost:3333
 ```
 
----
+Health check:
 
-# Configuração do frontend
+```text
+http://localhost:3333/health
+```
 
-Abra outro terminal e vá para o frontend:
+### 3. Frontend
+
+Em outro terminal:
 
 ```bash
 cd frontend
 npm install
-```
-
-Crie o arquivo `.env`:
-
-## frontend/.env
-
-```env
-VITE_API_URL=http://localhost:3333/api
-```
-
-Se estiver usando TypeScript com Vite, também é necessário ter o arquivo:
-
-## frontend/src/vite-env.d.ts
-
-```ts
-/// <reference types="vite/client" />
-
-interface ImportMetaEnv {
-  readonly VITE_API_URL: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
-```
-
----
-
-# Rodando o frontend
-
-Na pasta `frontend`:
-
-```bash
+cp .env.example .env
 npm run dev
 ```
 
-A aplicação ficará disponível em:
+O frontend fica em:
 
 ```text
 http://localhost:5173
 ```
 
----
+## Deploy em producao
 
-# Rotas da API
+### 1. Banco no Neon
 
-## Health check
+1. Crie uma conta em `https://neon.com`.
+2. Crie um projeto PostgreSQL.
+3. Copie a connection string.
+4. Use a URL com SSL, normalmente contendo `sslmode=require`.
+5. Essa URL sera usada como `DATABASE_URL` no Render.
 
-### `GET /health`
+O schema e as migrations atuais sao mantidos. O deploy executa:
 
-Verifica se a API está online.
-
----
-
-## Participantes
-
-### `GET /api/participants`
-
-Lista todos os participantes.
-
-### `GET /api/participants/:id`
-
-Busca um participante por ID.
-
-### `POST /api/participants`
-
-Cria um participante.
-
-Exemplo de body:
-
-```json
-{
-  "name": "João Silva",
-  "email": "joao@email.com"
-}
+```bash
+npm run db:migrate:deploy
 ```
 
-### `PUT /api/participants/:id`
+### 2. Backend no Render
 
-Atualiza um participante.
+Opcao recomendada: usar o `render.yaml` deste repositorio.
 
-Exemplo de body:
-
-```json
-{
-  "name": "João Silva",
-  "email": "joao@email.com"
-}
-```
-
-### `DELETE /api/participants/:id`
-
-Remove um participante.
-
-### `DELETE /api/participants`
-
-Limpa a lista atual de participantes.
-
-> Observação: esse endpoint limpa apenas a lista atual da rodada.
-> O histórico de sorteios (`Draw`, `DrawParticipant`, `DrawResult`) é preservado.
-
----
-
-## Sorteio
-
-### `POST /api/draw`
-
-Executa o sorteio, persiste o resultado e envia os e-mails.
-
-Exemplo de resposta:
-
-```json
-{
-  "message": "Sorteio realizado com sucesso.",
-  "emailError": null,
-  "draw": {
-    "id": 1,
-    "createdAt": "2026-06-24T19:31:15.174Z",
-    "totalParticipants": 3
-  }
-}
-```
-
----
-
-# Fluxo do sorteio
-
-Ao chamar `POST /api/draw`, o backend executa o seguinte fluxo:
-
-1. busca os participantes atuais
-2. valida se existem pelo menos 3 participantes
-3. embaralha os participantes
-4. monta os pares do sorteio sem auto-sorteio
-5. cria o registro de `Draw`
-6. cria o snapshot dos participantes em `DrawParticipant`
-7. salva os pares em `DrawResult`
-8. tenta enviar os e-mails
-9. retorna o resultado para o frontend
-
----
-
-# Como testar o envio de e-mail com Ethereal
-
-Para desenvolvimento, o mais simples é usar **Ethereal**.
-
-## Passo 1
-
-Acesse:
+1. Suba o projeto para o GitHub.
+2. No Render, crie um novo Blueprint ou Web Service apontando para o repositorio.
+3. Se usar Blueprint, o Render le o arquivo `render.yaml`.
+4. Se configurar manualmente, use:
 
 ```text
-https://ethereal.email/
+Root Directory: backend
+Build Command: npm ci --include=dev && npm run db:migrate:deploy && npm run build
+Start Command: npm start
+Health Check Path: /health
 ```
 
-Crie uma conta de teste e copie as credenciais SMTP.
+Variaveis obrigatorias no Render:
 
-## Passo 2
+```env
+NODE_ENV=production
+DATABASE_URL=<connection string do Neon>
+FRONTEND_URLS=https://<seu-projeto>.pages.dev
+MAIL_PROVIDER=resend
+RESEND_API_KEY=<sua chave da Resend>
+MAIL_FROM="Amigo Secreto <no-reply@seu-dominio.com>"
+MAIL_REPLY_TO="Amigo Secreto <seu-email@seu-dominio.com>"
+```
 
-Preencha essas credenciais no `backend/.env`.
-
-## Passo 3
-
-Execute um sorteio.
-
-## Passo 4
-
-O backend exibirá no console uma URL de preview de cada e-mail enviado.
-
-Exemplo:
+Depois do deploy, a API ficara em uma URL parecida com:
 
 ```text
-[email] Preview para joao@email.com: https://ethereal.email/message/...
+https://amigo-secreto-api.onrender.com
 ```
 
-Essa URL permite visualizar o e-mail no navegador sem precisar enviar um e-mail real.
+Teste:
 
----
+```text
+https://amigo-secreto-api.onrender.com/health
+```
 
-# Como usar a aplicação
+### 3. E-mail na Resend
 
-## 1. Cadastrar participantes
+1. Crie uma conta em `https://resend.com`.
+2. Crie uma API key com permissao de envio.
+3. Configure um dominio verificado para enviar e-mails reais.
+4. Preencha `RESEND_API_KEY`, `MAIL_FROM` e `MAIL_REPLY_TO` no Render.
 
-* abra o frontend
-* preencha nome e e-mail
-* clique em **Adicionar**
+O backend envia um e-mail por participante usando a API HTTP da Resend. Se qualquer envio falhar, o sorteio ja tera sido salvo e a resposta de `POST /api/draw` trara `emailError`.
 
-## 2. Editar participante
+### 4. Frontend no Cloudflare Pages
 
-* na lista, clique em **Editar**
-* um modal será aberto
-* altere nome e/ou e-mail
-* clique em **Atualizar**
+1. Entre em `https://pages.cloudflare.com`.
+2. Crie um projeto conectado ao GitHub.
+3. Configure:
 
-## 3. Excluir participante
+```text
+Root Directory: frontend
+Build Command: npm run build
+Build Output Directory: dist
+```
 
-* clique em **Excluir**
-* confirme a exclusão no modal
+4. Em Environment Variables, adicione:
 
-## 4. Realizar sorteio
+```env
+VITE_API_URL=https://amigo-secreto-api.onrender.com/api
+```
 
-* com pelo menos 3 participantes, clique em **Realizar sorteio**
-* o sistema salva o sorteio e envia os e-mails
+5. Faca o deploy.
+6. Copie a URL final do Pages e atualize `FRONTEND_URLS` no Render com essa origem.
+7. Faca redeploy do backend se o Render nao reiniciar automaticamente apos a mudanca de env.
 
-## 5. Iniciar nova rodada
+## Scripts importantes
 
-* após o sorteio, clique em **iniciar novo amigo secreto**
-* a lista atual de participantes será limpa
-* o histórico dos sorteios anteriores será mantido no banco
+### Backend
 
----
+```bash
+npm run dev
+npm run build
+npm start
+npm run prisma:generate
+npm run prisma:migrate
+npm run db:migrate:deploy
+```
 
-# Regras de negócio implementadas
+### Frontend
 
-## Participantes
+```bash
+npm run dev
+npm run build
+npm run preview
+```
 
-* nome obrigatório
-* e-mail obrigatório
-* e-mail único
-* nome tratado com trim e normalização de espaços
+## Arquivos alterados para deploy
 
-## Sorteio
+- `backend/package.json`: scripts de build e migracao de producao
+- `backend/src/app.ts`: CORS com multiplas origens por env
+- `backend/src/lib/mail.ts`: Resend API em producao e SMTP como fallback
+- `backend/.env.example`: variaveis de ambiente atualizadas
+- `frontend/.env.example`: exemplo da URL da API
+- `render.yaml`: configuracao opcional do backend no Render
+- `README.md`: instrucoes de deploy e operacao
 
-* mínimo de 3 participantes
-* ninguém pode tirar a si mesmo
-* todos devem tirar exatamente uma pessoa
-* todos devem ser tirados exatamente uma vez
-* o sorteio é salvo antes do envio de e-mail
+## Custos esperados
 
-## E-mail
+Para o escopo de teste tecnico, a expectativa e custo zero ou muito proximo de zero:
 
-* um e-mail por participante
-* tratamento de nomes repetidos no primeiro nome
-* template em texto e HTML
+- Cloudflare Pages: hospedagem estatica com plano gratuito
+- Render Free: API Node com limite mensal e cold start por inatividade
+- Neon Free: Postgres gratuito com limites de uso e armazenamento
+- Resend Free: envio gratuito dentro do limite mensal/diario
 
----
+Antes de deixar o projeto publico por mais tempo, confira os limites atuais de cada servico.
 
-# Possíveis melhorias futuras
+## Observacoes de producao
 
-* tela de histórico de sorteios
-* reenvio manual de e-mails de uma rodada específica
-* nome da rodada / evento de amigo secreto
-* data limite / valor do presente
-* tela administrativa para visualizar os pares do sorteio
-* autenticação
-* deploy em nuvem
-* testes automatizados
-
----
-
-# Checklist de entrega
-
-* [x] CRUD completo de participantes
-* [x] Sorteio de Amigo Secreto
-* [x] Garantia de que ninguém tira a si mesmo
-* [x] Envio de e-mail individual
-* [x] Backend em Node.js
-* [x] Frontend em React
-* [x] Persistência em PostgreSQL
-* [x] README com instruções de execução
-* [x] Tratamento de CORS
-* [x] Snapshot do sorteio para preservar histórico
-* [x] Tratamento de nomes duplicados no e-mail
-
----
-
-# Observação final
-
-O projeto foi pensado para ser simples, mas com uma estrutura sólida o suficiente para suportar evolução.
-Mesmo sendo um sistema pequeno, foram tratados pontos importantes de robustez, como:
-
-* consistência do histórico de sorteios
-* separação entre estado atual e snapshot da rodada
-* prevenção de auto-sorteio
-* tratamento de falha de e-mail sem perda do sorteio
-* organização de frontend e backend em camadas
-* configuração por variáveis de ambiente
+- Render Free pode dormir depois de inatividade. A primeira requisicao apos esse periodo pode demorar.
+- Nao use Render Postgres Free para este caso se precisar manter dados por mais de 30 dias; por isso a recomendacao e Neon.
+- Nao salve `.env` no Git.
+- Para e-mails reais, use dominio verificado na Resend.
+- O endpoint `DELETE /api/participants` limpa apenas a rodada atual. O historico de sorteios permanece salvo.
