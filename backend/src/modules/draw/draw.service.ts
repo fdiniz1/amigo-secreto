@@ -1,17 +1,11 @@
 import { Participant } from "@prisma/client";
 
-import { sendDrawEmails } from "../../lib/mail";
+import { MailDrawPair, sendDrawEmails } from "../../lib/mail";
 import { prisma } from "../../lib/prisma";
 
 type ParticipantDrawPair = {
   giverParticipantId: number;
   receiverParticipantId: number;
-};
-
-type EmailPair = {
-  giverName: string;
-  giverEmail: string;
-  receiverName: string;
 };
 
 export class DrawError extends Error {
@@ -106,6 +100,37 @@ function getEmailDisplayName(
   return firstName;
 }
 
+function buildEmailPairs(
+  participants: Participant[],
+  pairs: ParticipantDrawPair[],
+): MailDrawPair[] {
+  const participantsMap = new Map(
+    participants.map((participant) => [participant.id, participant]),
+  );
+  const duplicatedFirstNames = getDuplicatedFirstNameKeys(participants);
+
+  return pairs.map((pair) => {
+    const giver = participantsMap.get(pair.giverParticipantId);
+    const receiver = participantsMap.get(pair.receiverParticipantId);
+
+    if (!giver || !receiver) {
+      throw new DrawError("Falha ao montar os dados do sorteio.", 500);
+    }
+
+    return {
+      giverName: getEmailDisplayName(giver, duplicatedFirstNames),
+      giverEmail: giver.email,
+      receiverName: getEmailDisplayName(receiver, duplicatedFirstNames),
+    };
+  });
+}
+
+function sendDrawEmailsInBackground(emailPairs: MailDrawPair[]) {
+  void sendDrawEmails(emailPairs).catch((error) => {
+    console.error("Falha ao enviar e-mails do sorteio em background", error);
+  });
+}
+
 export const drawService = {
   async run() {
     const participants = await prisma.participant.findMany({
@@ -121,29 +146,10 @@ export const drawService = {
     const pairs = buildDrawPairs(participants);
 
     if (hasInvalidPairs(pairs, participants.length)) {
-      throw new DrawError("Falha ao gerar um sorteio válido. Tente novamente.", 500);
+      throw new DrawError("Falha ao gerar um sorteio valido. Tente novamente.", 500);
     }
 
-    const participantsMap = new Map(
-      participants.map((participant) => [participant.id, participant]),
-    );
-
-    const duplicatedFirstNames = getDuplicatedFirstNameKeys(participants);
-
-    const emailPairs: EmailPair[] = pairs.map((pair) => {
-      const giver = participantsMap.get(pair.giverParticipantId);
-      const receiver = participantsMap.get(pair.receiverParticipantId);
-
-      if (!giver || !receiver) {
-        throw new DrawError("Falha ao montar os dados do sorteio.", 500);
-      }
-
-      return {
-        giverName: getEmailDisplayName(giver, duplicatedFirstNames),
-        giverEmail: giver.email,
-        receiverName: getEmailDisplayName(receiver, duplicatedFirstNames),
-      };
-    });
+    const emailPairs = buildEmailPairs(participants, pairs);
 
     try {
       const draw = await prisma.$transaction(async (transaction) => {
@@ -205,20 +211,11 @@ export const drawService = {
         };
       });
 
-      let emailError: string | null = null;
-
-      try {
-        await sendDrawEmails(emailPairs);
-      } catch (error) {
-        console.error("Falha ao enviar e-mails do sorteio", error);
-        emailError = "O sorteio foi salvo, mas houve falha no envio dos e-mails.";
-      }
+      sendDrawEmailsInBackground(emailPairs);
 
       return {
-        message: emailError
-          ? "Sorteio realizado com sucesso, mas houve falha no envio dos e-mails."
-          : "Sorteio realizado com sucesso.",
-        emailError,
+        message: "Sorteio realizado com sucesso.",
+        emailError: null,
         draw,
       };
     } catch (error) {

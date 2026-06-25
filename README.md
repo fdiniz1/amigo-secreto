@@ -7,11 +7,11 @@ O projeto usa:
 - Frontend: React, TypeScript e Vite
 - Backend: Node.js, Express, TypeScript, Prisma e PostgreSQL
 - Banco: PostgreSQL
-- E-mail: Resend API em producao e SMTP opcional em desenvolvimento
+- E-mail: Resend API em producao e SMTP/Nodemailer como fallback local
 
 ## Status do deploy
 
-O projeto foi adaptado para deploy de custo zero ou quase zero com o menor retrabalho possivel:
+O projeto esta preparado para deploy de custo zero ou quase zero:
 
 - Frontend: Cloudflare Pages
 - Backend/API: Render Free Web Service
@@ -20,11 +20,34 @@ O projeto foi adaptado para deploy de custo zero ou quase zero com o menor retra
 
 Essa combinacao preserva o backend Express atual, a modelagem Prisma/PostgreSQL, as rotas existentes e a regra de sorteio ja implementada.
 
-## Por que nao migrar tudo para Cloudflare
+## Funcionamento do sorteio em producao
 
-Cloudflare Pages e uma boa escolha para o frontend estatico. Para o backend, porem, migrar para Cloudflare Workers exigiria trocar o runtime Node/Express, adaptar Prisma/PostgreSQL ou migrar para D1, e substituir o envio SMTP.
+O endpoint `POST /api/draw` nao espera o envio dos e-mails terminar.
 
-Para um teste tecnico que precisa ficar online rapido, manter Express no Render e usar Neon Postgres reduz risco e retrabalho. O unico ajuste relevante no e-mail e usar Resend por HTTP em producao, porque o Render Free bloqueia portas SMTP comuns.
+Fluxo atual:
+
+1. busca participantes atuais em `Participant`
+2. valida minimo de 3 participantes
+3. gera pares validos sem auto-sorteio
+4. salva `Draw`, `DrawParticipant` e `DrawResult`
+5. dispara o envio dos e-mails em background
+6. retorna sucesso imediatamente
+
+Resposta esperada:
+
+```json
+{
+  "message": "Sorteio realizado com sucesso.",
+  "emailError": null,
+  "draw": {
+    "id": 1,
+    "createdAt": "2026-06-24T19:31:15.174Z",
+    "totalParticipants": 3
+  }
+}
+```
+
+Se o envio de e-mail falhar depois da resposta, o sorteio continua salvo e a falha fica apenas no log do backend.
 
 ## Funcionalidades
 
@@ -46,8 +69,8 @@ Para um teste tecnico que precisa ficar online rapido, manter Express no Render 
 - Garante que todos tirem 1 pessoa
 - Garante que todos sejam tirados 1 vez
 - Salva historico completo do sorteio
-- Envia e-mail individual para cada participante
-- Se o envio de e-mail falhar, o sorteio continua salvo e a API retorna aviso
+- Envia e-mails individuais em background apos salvar o sorteio
+- Falhas de e-mail nao revertem o sorteio
 
 ## Modelagem de dados
 
@@ -58,7 +81,7 @@ O backend preserva quatro models Prisma:
 - `DrawParticipant`: snapshot dos participantes daquele sorteio
 - `DrawResult`: pares gerados no sorteio
 
-O fluxo do sorteio salva primeiro o historico (`Draw`, `DrawParticipant`, `DrawResult`) e so depois tenta enviar e-mails. Isso evita perder o resultado caso o provedor de e-mail falhe.
+O historico e salvo antes do envio de e-mail. Assim, mesmo que o provedor de e-mail falhe, os dados do sorteio permanecem consistentes.
 
 ## Estrutura
 
@@ -110,7 +133,6 @@ FRONTEND_URL=http://localhost:5173
 FRONTEND_URLS=http://localhost:5173
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/amigo_secreto?schema=public"
 
-MAIL_PROVIDER=smtp
 RESEND_API_KEY=
 MAIL_FROM="Amigo Secreto <no-reply@seu-dominio.com>"
 MAIL_REPLY_TO="Amigo Secreto <no-reply@seu-dominio.com>"
@@ -123,13 +145,20 @@ SMTP_FROM="Amigo Secreto <no-reply@amigosecreto.local>"
 SMTP_REPLY_TO="Amigo Secreto <no-reply@amigosecreto.local>"
 ```
 
+Regras de e-mail:
+
+- Se `RESEND_API_KEY` estiver preenchida, o backend usa Resend.
+- Se `RESEND_API_KEY` estiver vazia, o backend usa SMTP/Nodemailer.
+- `MAIL_FROM` e usado como remetente da Resend.
+- `SMTP_FROM` tambem e aceito como fallback para o remetente da Resend.
+- Em desenvolvimento local, Ethereal funciona pelo fallback SMTP.
+
 Para producao no Render, use:
 
 ```env
 NODE_ENV=production
 DATABASE_URL=<connection string do Neon com sslmode=require>
 FRONTEND_URLS=https://<seu-projeto>.pages.dev
-MAIL_PROVIDER=resend
 RESEND_API_KEY=<sua chave da Resend>
 MAIL_FROM="Amigo Secreto <no-reply@seu-dominio.com>"
 MAIL_REPLY_TO="Amigo Secreto <seu-email@seu-dominio.com>"
@@ -138,7 +167,6 @@ MAIL_REPLY_TO="Amigo Secreto <seu-email@seu-dominio.com>"
 Observacoes:
 
 - `FRONTEND_URLS` aceita varias origens separadas por virgula.
-- Em producao, prefira `MAIL_PROVIDER=resend`.
 - Para Resend enviar para destinatarios reais, configure um dominio verificado no painel da Resend e use esse dominio em `MAIL_FROM`.
 - SMTP continua disponivel para desenvolvimento local com Ethereal ou outro provedor SMTP.
 
@@ -251,7 +279,6 @@ Variaveis obrigatorias no Render:
 NODE_ENV=production
 DATABASE_URL=<connection string do Neon>
 FRONTEND_URLS=https://<seu-projeto>.pages.dev
-MAIL_PROVIDER=resend
 RESEND_API_KEY=<sua chave da Resend>
 MAIL_FROM="Amigo Secreto <no-reply@seu-dominio.com>"
 MAIL_REPLY_TO="Amigo Secreto <seu-email@seu-dominio.com>"
@@ -276,7 +303,7 @@ https://amigo-secreto-api.onrender.com/health
 3. Configure um dominio verificado para enviar e-mails reais.
 4. Preencha `RESEND_API_KEY`, `MAIL_FROM` e `MAIL_REPLY_TO` no Render.
 
-O backend envia um e-mail por participante usando a API HTTP da Resend. Se qualquer envio falhar, o sorteio ja tera sido salvo e a resposta de `POST /api/draw` trara `emailError`.
+Quando `RESEND_API_KEY` existe, o backend envia os e-mails pela API HTTP da Resend. O envio acontece em background depois que o sorteio ja foi salvo.
 
 ### 4. Frontend no Cloudflare Pages
 
@@ -321,12 +348,11 @@ npm run build
 npm run preview
 ```
 
-## Arquivos alterados para deploy
+## Arquivos relevantes para deploy
 
-- `backend/package.json`: scripts de build e migracao de producao
-- `backend/src/app.ts`: CORS com multiplas origens por env
-- `backend/src/lib/mail.ts`: Resend API em producao e SMTP como fallback
-- `backend/.env.example`: variaveis de ambiente atualizadas
+- `backend/src/lib/mail.ts`: Resend quando `RESEND_API_KEY` existe, SMTP quando nao existe
+- `backend/src/modules/draw/draw.service.ts`: salva o sorteio e dispara e-mails em background
+- `backend/.env.example`: variaveis de ambiente de banco, CORS e e-mail
 - `frontend/.env.example`: exemplo da URL da API
 - `render.yaml`: configuracao opcional do backend no Render
 - `README.md`: instrucoes de deploy e operacao

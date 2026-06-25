@@ -6,8 +6,6 @@ export interface MailDrawPair {
   receiverName: string;
 }
 
-type MailProvider = "resend" | "smtp";
-
 type ResendResponse = {
   id?: string;
   name?: string;
@@ -23,35 +21,16 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function getMailProvider(): MailProvider {
-  const provider = process.env.MAIL_PROVIDER?.trim().toLowerCase();
-
-  if (provider === "resend" || provider === "smtp") {
-    return provider;
-  }
-
-  if (provider) {
-    throw new Error("MAIL_PROVIDER deve ser 'resend' ou 'smtp'.");
-  }
-
-  return process.env.RESEND_API_KEY ? "resend" : "smtp";
-}
-
-function getRequiredEnv(key: string): string {
+function getOptionalEnv(key: string): string | undefined {
   const value = process.env[key]?.trim();
-
-  if (!value) {
-    throw new Error(`Variavel de ambiente obrigatoria ausente: ${key}.`);
-  }
-
-  return value;
+  return value || undefined;
 }
 
 function createTransporter() {
-  const host = process.env.SMTP_HOST;
+  const host = getOptionalEnv("SMTP_HOST");
   const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const user = getOptionalEnv("SMTP_USER");
+  const pass = getOptionalEnv("SMTP_PASS");
 
   if (!host || !user || !pass) {
     throw new Error(
@@ -186,15 +165,14 @@ function buildEmailHtml(pair: MailDrawPair): string {
   `;
 }
 
-async function sendEmailWithResend(pair: MailDrawPair): Promise<void> {
-  const apiKey = getRequiredEnv("RESEND_API_KEY");
-  const from = process.env.MAIL_FROM || process.env.SMTP_FROM;
+async function sendEmailWithResend(pair: MailDrawPair, apiKey: string): Promise<void> {
+  const from = getOptionalEnv("MAIL_FROM") || getOptionalEnv("SMTP_FROM");
 
   if (!from) {
     throw new Error("Defina MAIL_FROM para enviar e-mails pela Resend.");
   }
 
-  const replyTo = process.env.MAIL_REPLY_TO || process.env.SMTP_REPLY_TO;
+  const replyTo = getOptionalEnv("MAIL_REPLY_TO") || getOptionalEnv("SMTP_REPLY_TO");
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -206,7 +184,7 @@ async function sendEmailWithResend(pair: MailDrawPair): Promise<void> {
     body: JSON.stringify({
       from,
       to: pair.giverEmail,
-      subject: "Seu amigo secreto foi sorteado",
+      subject: "Seu amigo secreto foi sorteado 🎁",
       text: buildEmailText(pair),
       html: buildEmailHtml(pair),
       ...(replyTo ? { reply_to: replyTo } : {}),
@@ -223,22 +201,40 @@ async function sendEmailWithResend(pair: MailDrawPair): Promise<void> {
   console.log(`[email] Resend enviou ${data.id ?? "mensagem"} para ${pair.giverEmail}`);
 }
 
+async function sendEmailsWithResend(pairs: MailDrawPair[], apiKey: string): Promise<void> {
+  const results = await Promise.allSettled(
+    pairs.map((pair) => sendEmailWithResend(pair, apiKey)),
+  );
+
+  const failedResults = results.filter((result) => result.status === "rejected");
+
+  for (const result of failedResults) {
+    console.error("[email] Falha individual no envio pela Resend", result.reason);
+  }
+
+  if (failedResults.length > 0) {
+    throw new Error(
+      `Falha ao enviar ${failedResults.length} de ${pairs.length} e-mail(s) pela Resend.`,
+    );
+  }
+}
+
 async function sendEmailsWithSmtp(pairs: MailDrawPair[]): Promise<void> {
   const transporter = createTransporter();
 
   await transporter.verify();
 
   const from =
-    process.env.SMTP_FROM || "Amigo Secreto <no-reply@amigosecreto.local>";
-  const replyTo = process.env.SMTP_REPLY_TO || from;
+    getOptionalEnv("SMTP_FROM") || "Amigo Secreto <no-reply@amigosecreto.local>";
+  const replyTo = getOptionalEnv("SMTP_REPLY_TO") || from;
 
-  await Promise.all(
+  const results = await Promise.allSettled(
     pairs.map(async (pair) => {
       const info = await transporter.sendMail({
         from,
         replyTo,
         to: pair.giverEmail,
-        subject: "Seu amigo secreto foi sorteado",
+        subject: "Seu amigo secreto foi sorteado 🎁",
         text: buildEmailText(pair),
         html: buildEmailHtml(pair),
       });
@@ -252,17 +248,29 @@ async function sendEmailsWithSmtp(pairs: MailDrawPair[]): Promise<void> {
       }
     }),
   );
+
+  const failedResults = results.filter((result) => result.status === "rejected");
+
+  for (const result of failedResults) {
+    console.error("[email] Falha individual no envio SMTP", result.reason);
+  }
+
+  if (failedResults.length > 0) {
+    throw new Error(
+      `Falha ao enviar ${failedResults.length} de ${pairs.length} e-mail(s) por SMTP.`,
+    );
+  }
 }
 
 export async function sendDrawEmails(pairs: MailDrawPair[]): Promise<void> {
   if (!pairs.length) return;
 
-  const provider = getMailProvider();
+  const resendApiKey = getOptionalEnv("RESEND_API_KEY");
 
-  if (provider === "smtp") {
-    await sendEmailsWithSmtp(pairs);
+  if (resendApiKey) {
+    await sendEmailsWithResend(pairs, resendApiKey);
     return;
   }
 
-  await Promise.all(pairs.map((pair) => sendEmailWithResend(pair)));
+  await sendEmailsWithSmtp(pairs);
 }
